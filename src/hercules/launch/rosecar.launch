@@ -1,0 +1,101 @@
+<!-- -*- mode: XML -*- -->
+<launch>
+	<!-- optionally launch in GDB, for debugging -->
+	<arg name="debug" default="false" />
+	<arg if="$(arg debug)" name="launch_prefix" value="xterm -e gdb --args" />
+	<arg unless="$(arg debug)" name="launch_prefix" value="" />
+	
+	<!-- convert xacro into urdf, load urdf xml robot description to parameter server -->
+	<param name="robot_description" command="$(find xacro)/xacro '/home/nvidia/catkin_ws/src/hercules/urdf/rosecar.xacro'" />
+	
+	<!-- load yamls to parameter server -->
+	<rosparam file="/home/nvidia/catkin_ws/src/hercules/config/rosecar_control.yaml" command="load"/>
+	<rosparam file="/home/nvidia/catkin_ws/src/hercules/config/speed.yaml" command="load"/>
+	<rosparam file="/home/nvidia/catkin_ws/src/hercules/config/vesc.yaml" command="load" ns="vesc" />
+	
+	<!-- convert joint states to TF transforms for rviz -->
+	<node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher"
+		respawn="false" output="screen" >
+    	<remap from="/joint_states" to="/rosecar/joint_states" />
+	</node>
+	
+	<!-- static transforms nodes -->
+	<node pkg="tf2_ros" type="static_transform_publisher" name="base_footprint_to_imu" 
+        args="0.13 0.0 -0.025		0.0 0.0 0.0 base_link base_imu_link" />
+	
+	<node pkg="tf2_ros" type="static_transform_publisher" name="base_link_to_base_footprint" 
+        args="0.0 0.0 0.0		0.0 0.0 0.0 base_link base_footprint" />
+
+	<!-- imu_driver_node -->
+	<node pkg="imu_driver" type="imu_driver" name="imu_driver_node"
+		output="screen" launch-prefix="$(arg launch_prefix)" >
+		<param name="imu_port" value="/dev/ttyACM1" />
+		<remap from="/imu_data" to="/imu" />
+	</node>
+	
+	<!-- joy_node -->
+	<node pkg="joy" type="joy_node" name="joy_node"
+		output="screen" launch-prefix="$(arg launch_prefix)" >
+		<param name="dev" type="string" value="/dev/input/js0" />
+		<param name="deadzone" value="0.01" />
+		<param name="autorepeat_rate" value="20" />
+		<param name="coalesce_interval" value="0.01" />
+	</node>
+	
+	<!-- ps4_teleop_node  --> 
+	<node pkg="ps4_teleop" type="ps4_teleop_node" name="ps4_teleop_node"
+		output="screen" launch-prefix="$(arg launch_prefix)" /> 
+	
+	<!-- VESC -->
+	<!-- default_zero_ackermann_node -->
+	<node name="zero_ackermann_cmd" pkg="rostopic" type="rostopic" args="pub -r 6 high_level/ackermann_cmd_mux/input/default ackermann_msgs/AckermannDriveStamped '{header: auto, drive: {steering_angle: 0.0, speed: 0.0} }'" ns="vesc" />
+	
+	<!-- nodelet_manager_names -->
+	<arg name="nodelet_manager_name"  value="ackermann_cmd_mux_nodelet_manager" />
+	
+	<!-- high_level -->
+	<node pkg="nodelet" type="nodelet" name="$(arg nodelet_manager_name)" args="manager" ns="vesc/high_level" output="screen" />
+	
+	<node pkg="nodelet" type="nodelet" name="ackermann_cmd_mux" ns="vesc/high_level"
+		args="load ackermann_cmd_mux/AckermannCmdMuxNodelet $(arg nodelet_manager_name)" output="screen" >
+		<param name="yaml_cfg_file" value="/home/nvidia/catkin_ws/src/hercules/config/high_level_mux.yaml" />
+	</node>
+	
+	<!-- low_level -->
+	<node pkg="nodelet" type="nodelet" name="$(arg nodelet_manager_name)" args="manager" ns="vesc/low_level" output="screen" />
+	
+	<node pkg="nodelet" type="nodelet" name="ackermann_cmd_mux" ns="vesc/low_level"
+		args="load ackermann_cmd_mux/AckermannCmdMuxNodelet $(arg nodelet_manager_name)" output="screen" >
+		<param name="yaml_cfg_file" value="/home/nvidia/catkin_ws/src/hercules/config/low_level_mux.yaml" />
+	</node>
+	
+	<!-- mux_chainer_node -->
+	<node name="mux_chainer" pkg="topic_tools" type="relay"
+  		args="/vesc/high_level/ackermann_cmd_mux/output /vesc/low_level/ackermann_cmd_mux/input/navigation" ns="vesc" />
+	
+	<!-- throttle_interpolator_node
+	<node pkg="racecar_control" type="throttle_interpolator.py" name="throttle_interpolator" ns="vesc"
+		output="screen" launch-prefix="$(arg launch_prefix)" /> -->
+	
+	<!-- ackermann_to_vesc_node -->
+	<node pkg="vesc_ackermann" type="ackermann_to_vesc_node" name="ackermann_to_vesc" ns="vesc">
+    	<remap from="ackermann_cmd" to="low_level/ackermann_cmd_mux/output" />
+    	<!--<remap from="commands/motor/speed" to="commands/motor/unsmoothed_speed" />
+    	<remap from="commands/servo/position" to="commands/servo/unsmoothed_position" />  -->
+	</node>
+	
+	<!-- vesc_to_odom_node -->
+	<node pkg="vesc_ackermann" type="vesc_to_odom_node" name="vesc_to_odom" ns="vesc"
+		output="screen" launch-prefix="$(arg launch_prefix)" />
+	
+	<!-- vesc_driver_node -->
+	<node pkg="vesc_driver" type="vesc_driver_node" name="vesc_driver_node" ns="vesc"
+		output="screen" launch-prefix="$(arg launch_prefix)" >
+		<param name="port" value="/dev/ttyACM0" />
+	</node>
+
+	<!-- rviz 
+	<node pkg="rviz" type="rviz" name="my_rviz" 
+	args="-d /home/nvidia/RoseCar/rviz/rosecar.rviz" />-->
+	
+</launch>

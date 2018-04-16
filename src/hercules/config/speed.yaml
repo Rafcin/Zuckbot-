@@ -1,0 +1,7 @@
+# PS4 teleop parameters
+max_teleop_forward_speed: 1
+max_teleop_reverse_speed: 1
+
+# Nav stack parameters
+max_nav_forward_speed: 1
+max_nav_reverse_speed: 1

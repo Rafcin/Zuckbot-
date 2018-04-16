@@ -1,0 +1,137 @@
+<!-- -*- mode: XML -*- -->
+<launch>
+  	<!-- optionally launch in GDB, for debugging -->
+	<arg name="debug" default="false" />
+	<arg if="$(arg debug)" name="launch_prefix" value="xterm -e gdb --args" />
+	<arg unless="$(arg debug)" name="launch_prefix" value="" />
+	
+	<!-- base -->
+	<include file="/home/nvidia/RoseCar/launch/rosecar.launch" />
+	
+	<!-- map server -->
+  	<arg name="map" value="/home/nvidia/RoseCar/maps/room4.yaml" />
+  	<node name="map_server" pkg="map_server" type="map_server" args="$(arg map)" />
+	
+	<!-- sweep_node -->
+	<node pkg="sweep_ros"  type="sweep_node" name="sweep_node" ns="rosecar"
+		output="screen" launch-prefix="$(arg launch_prefix)" >
+		<param name="serial_port" type="string" value="/dev/ttyUSB0"/>
+		<param name="serial_baudrate" type="int" value="115200"/>
+		<param name="frame_id" type="string" value="laser"/>
+		<param name="rotation_speed" type="int" value="3"/>
+		<param name="sample_rate" type="int" value="500"/>
+		<remap from="pc2" to="/sweep_pc2"/>
+	</node>
+	
+    <!-- pointcloud_to_laserscan_node -->
+    <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node" name="sweep_pointcloud_to_laserscan"
+		output="screen" launch-prefix="$(arg launch_prefix)" >
+        <remap from="cloud_in" to="/sweep_pc2"/>
+		<remap from="scan" to="/scan"/>
+        <rosparam>
+            target_frame: laser # Leave disabled to output scan in pointcloud frame
+            transform_tolerance: 0.001
+            min_height: -1.0
+            max_height: 1.0
+
+            angle_min: -3.14 # -M_PI/2
+            angle_max: 3.14 # M_PI/2
+            angle_increment: 0.0174533 # M_PI/360.0
+            scan_time: 0.33
+            range_min: 0.0
+            range_max: 20.0
+            use_inf: true
+
+            # Concurrency level, affects number of pointclouds queued for processing and number of threads used
+            # 0 : Detect number of cores
+            # 1 : Single threaded
+            # 2->inf : Parallelism level
+            concurrency_level: 1
+        </rosparam>
+    </node>
+	
+	<!-- laser_scan_matcher -->
+	<node pkg="laser_scan_matcher" type="laser_scan_matcher_node" name="laser_scan_matcher_node"
+		output="screen" launch-prefix="$(arg launch_prefix)" >
+        <param name="fixed_frame" value = "odom"/>
+        <param name="base_frame" value = "base_link"/>
+        <param name="publish_tf" value="true"/>
+		<param name="use_cloud_input" value="false"/>
+        <param name="use_odom" value="true"/>
+        <param name="use_imu" value="false"/>
+        <param name="max_iterations" value="10"/>
+		<remap from="scan" to="/scan"/>
+		<remap from="cloud" to="/sweep_pc2"/>
+		<remap from="odom" to="/vesc/odom"/>
+    </node>
+
+  	<!-- amcl -->
+  	<arg name="use_map_topic"  default="true"/>
+  	<arg name="scan_topic"     default="/scan"/>
+  	<arg name="initial_pose_x" default="0.0"/>
+  	<arg name="initial_pose_y" default="0.0"/>
+  	<arg name="initial_pose_a" default="0.0"/>
+
+  	<node pkg="amcl" type="amcl" name="amcl"
+		output="screen" launch-prefix="$(arg launch_prefix)" >
+    	<param name="use_map_topic"             value="$(arg use_map_topic)"/>
+    	<param name="odom_model_type"           value="diff"/>
+    	<param name="odom_alpha5"               value="0.1"/>
+    	<!-- Publish scans from best pose at a max of 4 Hz -->
+    	<param name="gui_publish_rate"          value="4.0"/>
+    	<param name="laser_max_beams"           value="60"/>
+    	<param name="laser_max_range"           value="12.0"/>
+    	<param name="min_particles"             value="500"/>
+    	<param name="max_particles"             value="2000"/>
+    	<param name="kld_err"                   value="0.05"/>
+    	<param name="kld_z"                     value="0.99"/>
+    	<param name="odom_alpha1"               value="0.2"/>
+    	<param name="odom_alpha2"               value="0.2"/>
+    	<!-- translation std dev, m -->
+    	<param name="odom_alpha3"               value="0.2"/>
+    	<param name="odom_alpha4"               value="0.2"/>
+    	<param name="laser_z_hit"               value="0.5"/>
+    	<param name="laser_z_short"             value="0.05"/>
+    	<param name="laser_z_max"               value="0.05"/>
+    	<param name="laser_z_rand"              value="0.5"/>
+    	<param name="laser_sigma_hit"           value="0.2"/>
+    	<param name="laser_lambda_short"        value="0.1"/>
+    	<param name="laser_model_type"          value="likelihood_field"/>
+    	<!-- <param name="laser_model_type" value="beam"/> -->
+    	<param name="laser_likelihood_max_dist" value="2.0"/>
+    	<param name="update_min_d"              value="0.25"/>
+    	<param name="update_min_a"              value="0.2"/>
+    	<param name="odom_frame_id"             value="odom"/>
+    	<param name="base_frame_id"             value="base_link"/>
+    	<param name="resample_interval"         value="1"/>
+    	<!-- Increase tolerance because the computer can get quite busy -->
+    	<param name="transform_tolerance"       value="1.0"/>
+    	<param name="recovery_alpha_slow"       value="0.0"/>
+    	<param name="recovery_alpha_fast"       value="0.0"/>
+    	<param name="initial_pose_x"            value="$(arg initial_pose_x)"/>
+    	<param name="initial_pose_y"            value="$(arg initial_pose_y)"/>
+    	<param name="initial_pose_a"            value="$(arg initial_pose_a)"/>
+    	<remap from="scan"                      to="$(arg scan_topic)"/>
+	</node>
+
+	<!-- navigation stack -->
+	<node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    	<rosparam file="/home/nvidia/RoseCar/config/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    	<rosparam file="/home/nvidia/RoseCar/config/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    	<rosparam file="/home/nvidia/RoseCar/config/local_costmap_params.yaml" command="load" /> 
+    	<rosparam file="/home/nvidia/RoseCar/config/global_costmap_params.yaml" command="load" />
+    	<rosparam file="/home/nvidia/RoseCar/config/base_local_planner_params.yaml" command="load" />
+    	<rosparam file="/home/nvidia/RoseCar/config/base_global_planner_params.yaml" command="load" />
+	</node>
+	
+	<!-- twist_vesc_node  -->
+	<node pkg="twist_vesc" type="twist_vesc_node" name="twist_vesc_node"
+		output="screen" launch-prefix="$(arg launch_prefix)" >
+		<remap from="/ackermann_cmd_mux/input/ackermann_twist" to="/vesc/low_level/ackermann_cmd_mux/input/teleop"/>
+	</node>
+
+	<!-- rviz -->
+	<node pkg="rviz" type="rviz" name="my_rviz" 
+	args="-d /home/nvidia/RoseCar/rviz/nav.rviz" />
+	
+</launch>

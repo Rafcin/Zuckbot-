@@ -1,0 +1,26 @@
+# Created on: Oct 29, 2012
+#     Author: jorge
+# Configuration for subscribers to ackermann_cmd sources. This file is provided just as an example.
+# Typically automatic controllers, as ROS navigation stack should have the minimum priority
+#
+# Used with example.launch
+#
+# Individual subscriber configuration:
+#   name:           Source name
+#   topic:          The topic that provides ackermann_cmd messages
+#   timeout:        Time in seconds without incoming messages to consider this topic inactive
+#   priority:       Priority: an UNIQUE unsigned integer from 0 (lowest) to MAX_INT 
+#   short_desc:     Short description (optional)
+
+subscribers:
+  - name:        "Default input"
+    topic:       "input/ackermann_zero"
+    timeout:     0.5
+    priority:    0
+    short_desc:  "The default (zero) ackermann_cmd"
+  - name:        "Joystick input"
+    topic:       "input/ackermann_joy"
+    timeout:     0.5
+    priority:    1
+    short_desc:  "Joystick ackermann_cmd"
+publisher:       "output/ackermann_cmd"

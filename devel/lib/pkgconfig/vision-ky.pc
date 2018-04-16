@@ -1,0 +1,8 @@
+prefix=/home/nvidia/catkin_ws/devel
+
+Name: vision-ky
+Description: Description of vision-ky
+Version: 0.0.0
+Cflags: 
+Libs: -L/home/nvidia/catkin_ws/devel/lib -lvision-ky
+Requires: rospy sensor_msgs std_msgs
